@@ -14,8 +14,8 @@ let players = {};
 io.on('connection', (socket) => {
     console.log(`Combatant dropped in: ${socket.id}`);
 
-    // Track position, looking direction, and active weapon selection
-    players[socket.id] = { x: 0, y: 2.5, z: 30, yaw: 0, pitch: 0, currentWeapon: 1 };
+    // Initialize player with 100 Health
+    players[socket.id] = { x: 0, y: 2.5, z: 30, yaw: 0, pitch: 0, currentWeapon: 1, health: 100 };
 
     socket.emit('currentPlayers', players);
     socket.broadcast.emit('newPlayer', { id: socket.id, ...players[socket.id] });
@@ -31,7 +31,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle weapon swapping synchronization
     socket.on('weaponChange', (data) => {
         if (players[socket.id]) {
             players[socket.id].currentWeapon = data.currentWeapon;
@@ -50,6 +49,23 @@ io.on('connection', (socket) => {
         });
     });
 
+    // Listen for a successful bullet hit registered by a client
+    socket.on('playerHit', (data) => {
+        const targetId = data.targetId;
+        const damage = data.damage;
+
+        if (players[targetId]) {
+            players[targetId].health -= damage;
+            
+            if (players[targetId].health <= 0) {
+                players[targetId].health = 100; // Reset health for respawn
+                io.emit('playerKilled', { targetId: targetId, shooterId: socket.id });
+            } else {
+                io.emit('healthUpdated', { id: targetId, health: players[targetId].health });
+            }
+        }
+    });
+
     socket.on('disconnect', () => {
         delete players[socket.id];
         io.emit('playerDisconnected', socket.id);
@@ -57,4 +73,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`FPS Multiplayer Brain Engine online on port ${PORT}`));
+server.listen(PORT, () => console.log(`FPS Multiplayer Engine online on port ${PORT}`));

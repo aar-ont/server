@@ -6,52 +6,55 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 let players = {};
 
 io.on('connection', (socket) => {
-    console.log(`Player connected: ${socket.id}`);
+    console.log(`Combatant dropped in: ${socket.id}`);
 
-    // Initialize player with full tracking states
-    players[socket.id] = { x: 0, y: 2.5, z: 30, yaw: 0 };
+    // Track position, looking direction, and active weapon selection
+    players[socket.id] = { x: 0, y: 2.5, z: 30, yaw: 0, pitch: 0, currentWeapon: 1 };
 
     socket.emit('currentPlayers', players);
     socket.broadcast.emit('newPlayer', { id: socket.id, ...players[socket.id] });
 
-    // Stream movement and jump physics
-    socket.on('playerMovement', (movementData) => {
+    socket.on('playerMovement', (mov) => {
         if (players[socket.id]) {
-            players[socket.id].x = movementData.x;
-            players[socket.id].y = movementData.y;
-            players[socket.id].z = movementData.z;
-            players[socket.id].yaw = movementData.yaw;
+            players[socket.id].x = mov.x;
+            players[socket.id].y = mov.y;
+            players[socket.id].z = mov.z;
+            players[socket.id].yaw = mov.yaw;
+            players[socket.id].pitch = mov.pitch;
             socket.broadcast.emit('playerMoved', { id: socket.id, ...players[socket.id] });
         }
     });
 
-    // Listen for shots and broadcast the bullet data to everyone else
+    // Handle weapon swapping synchronization
+    socket.on('weaponChange', (data) => {
+        if (players[socket.id]) {
+            players[socket.id].currentWeapon = data.currentWeapon;
+            socket.broadcast.emit('remoteWeaponChanged', { id: socket.id, currentWeapon: data.currentWeapon });
+        }
+    });
+
     socket.on('shootBullet', (bulletData) => {
         socket.broadcast.emit('remoteBulletFired', {
             playerId: socket.id,
             origin: bulletData.origin,
             direction: bulletData.direction,
-            velocity: bulletData.velocity
+            velocity: bulletData.velocity,
+            color: bulletData.color,
+            bSize: bulletData.bSize
         });
     });
 
     socket.on('disconnect', () => {
-        console.log(`Player disconnected: ${socket.id}`);
         delete players[socket.id];
         io.emit('playerDisconnected', socket.id);
     });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`FPS Multiplayer Brain running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`FPS Multiplayer Brain Engine online on port ${PORT}`));
